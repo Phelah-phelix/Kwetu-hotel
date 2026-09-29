@@ -1,0 +1,357 @@
+// Kwetu Hotel — Database Schema
+// This file is the single source of truth for our database structure.
+// Every time we change something here, we run `npx prisma migrate dev`
+// and Prisma updates the real PostgreSQL database to match.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────
+// USERS & STAFF
+// ─────────────────────────────────────────────
+
+enum Role {
+  CUSTOMER
+  WORKER
+  ADMIN
+}
+
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  password  String
+  phone     String?
+  role      Role     @default(CUSTOMER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  staffProfile        StaffProfile?
+  bookings            Booking[]
+  serviceBookings     ServiceBooking[]
+  conferenceBookings  ConferenceBooking[]
+  reviews             Review[]
+  notifications       Notification[]
+  payments            Payment[]
+  assignedTasks       Task[]              @relation("AssignedTasks")
+
+  @@map("users")
+}
+
+model Department {
+  id    String         @id @default(uuid())
+  name  String         @unique
+  staff StaffProfile[]
+
+  @@map("departments")
+}
+
+model StaffProfile {
+  id           String     @id @default(uuid())
+  userId       String     @unique
+  user         User       @relation(fields: [userId], references: [id])
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id])
+  position     String
+  dateHired    DateTime   @default(now())
+  shifts       Shift[]
+
+  @@map("staff_profiles")
+}
+
+model Shift {
+  id        String       @id @default(uuid())
+  staffId   String
+  staff     StaffProfile @relation(fields: [staffId], references: [id])
+  date      DateTime
+  startTime DateTime
+  endTime   DateTime
+
+  @@map("shifts")
+}
+
+// ─────────────────────────────────────────────
+// ACCOMMODATION
+// ─────────────────────────────────────────────
+
+model RoomType {
+  id           String   @id @default(uuid())
+  name         String   @unique
+  description  String?
+  basePrice    Decimal  @db.Decimal(10, 2)
+  maxOccupancy Int
+  amenities    String[]
+  images       String[] // uploaded photo URLs, e.g. /uploads/room-types/<id>/<file>.webp
+  rooms        Room[]
+
+  @@map("room_types")
+}
+
+enum RoomStatus {
+  AVAILABLE
+  OCCUPIED
+  CLEANING
+  MAINTENANCE
+}
+
+model Room {
+  id         String     @id @default(uuid())
+  roomNumber String     @unique
+  floor      Int
+  roomTypeId String
+  roomType   RoomType   @relation(fields: [roomTypeId], references: [id])
+  status     RoomStatus @default(AVAILABLE)
+  bookings   Booking[]
+  tasks      Task[]
+
+  @@map("rooms")
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CHECKED_IN
+  CHECKED_OUT
+  CANCELLED
+}
+
+model Booking {
+  id             String        @id @default(uuid())
+  customerId     String
+  customer       User          @relation(fields: [customerId], references: [id])
+  roomId         String
+  room           Room          @relation(fields: [roomId], references: [id])
+  checkIn        DateTime
+  checkOut       DateTime
+  numberOfGuests Int
+  status         BookingStatus @default(PENDING)
+  totalAmount    Decimal       @db.Decimal(10, 2)
+  createdAt      DateTime      @default(now())
+  payments       Payment[]
+
+  @@map("bookings")
+}
+
+// ─────────────────────────────────────────────
+// SERVICES (Spa, Gym, Pool, National Park Tours)
+// ─────────────────────────────────────────────
+
+enum ServiceCategory {
+  SPA
+  GYM
+  POOL
+  PARK_TOUR
+}
+
+model Service {
+  id           String          @id @default(uuid())
+  name         String
+  category     ServiceCategory
+  description  String?
+  price        Decimal         @db.Decimal(10, 2)
+  durationMins Int?
+  bookings     ServiceBooking[]
+
+  @@map("services")
+}
+
+enum ServiceBookingStatus {
+  PENDING
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+}
+
+model ServiceBooking {
+  id         String               @id @default(uuid())
+  customerId String
+  customer   User                 @relation(fields: [customerId], references: [id])
+  serviceId  String
+  service    Service              @relation(fields: [serviceId], references: [id])
+  date       DateTime
+  timeSlot   String
+  status     ServiceBookingStatus @default(PENDING)
+  amount     Decimal              @db.Decimal(10, 2)
+  createdAt  DateTime             @default(now())
+  payments   Payment[]
+
+  @@map("service_bookings")
+}
+
+// ─────────────────────────────────────────────
+// CONFERENCE & MEETINGS
+// ─────────────────────────────────────────────
+
+model ConferenceRoom {
+  id         String   @id @default(uuid())
+  name       String   @unique
+  capacity   Int
+  hourlyRate Decimal  @db.Decimal(10, 2)
+  equipment  String[]
+  bookings   ConferenceBooking[]
+
+  @@map("conference_rooms")
+}
+
+model ConferenceBooking {
+  id               String         @id @default(uuid())
+  customerId       String
+  customer         User           @relation(fields: [customerId], references: [id])
+  conferenceRoomId String
+  conferenceRoom   ConferenceRoom @relation(fields: [conferenceRoomId], references: [id])
+  date             DateTime
+  startTime        DateTime
+  endTime          DateTime
+  purpose          String?
+  attendees        Int
+  amount           Decimal        @db.Decimal(10, 2)
+  createdAt        DateTime       @default(now())
+  payments         Payment[]
+
+  @@map("conference_bookings")
+}
+
+// ─────────────────────────────────────────────
+// PAYMENTS (M-Pesa / Card / Cash)
+// ─────────────────────────────────────────────
+
+enum PaymentMethod {
+  MPESA
+  CARD
+  CASH
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+model Payment {
+  id                  String              @id @default(uuid())
+  userId              String
+  user                User                @relation(fields: [userId], references: [id])
+  bookingId           String?
+  booking             Booking?            @relation(fields: [bookingId], references: [id])
+  serviceBookingId    String?
+  serviceBooking      ServiceBooking?     @relation(fields: [serviceBookingId], references: [id])
+  conferenceBookingId String?
+  conferenceBooking   ConferenceBooking?  @relation(fields: [conferenceBookingId], references: [id])
+  amount              Decimal             @db.Decimal(10, 2)
+  method              PaymentMethod
+  mpesaReceiptNumber  String?
+  phoneNumber         String?
+  checkoutRequestId   String?             @unique
+  status              PaymentStatus       @default(PENDING)
+  paidAt              DateTime?
+  createdAt           DateTime            @default(now())
+
+  @@map("payments")
+}
+
+// ─────────────────────────────────────────────
+// STAFF TASKS (Housekeeping / Maintenance)
+// ─────────────────────────────────────────────
+
+enum TaskType {
+  CLEANING
+  MAINTENANCE
+  ROOM_SERVICE
+}
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+model Task {
+  id           String       @id @default(uuid())
+  assignedToId String
+  assignedTo   User         @relation("AssignedTasks", fields: [assignedToId], references: [id])
+  roomId       String?
+  room         Room?        @relation(fields: [roomId], references: [id])
+  type         TaskType
+  status       TaskStatus   @default(PENDING)
+  priority     TaskPriority @default(MEDIUM)
+  notes        String?
+  createdAt    DateTime     @default(now())
+  completedAt  DateTime?
+
+  @@map("tasks")
+}
+
+// ─────────────────────────────────────────────
+// REVIEWS & NOTIFICATIONS
+// ─────────────────────────────────────────────
+
+enum ReviewCategory {
+  ROOM
+  SPA
+  SERVICE
+  CONFERENCE
+  OVERALL
+}
+
+model Review {
+  id            String         @id @default(uuid())
+  customerId    String
+  customer      User           @relation(fields: [customerId], references: [id])
+  category      ReviewCategory
+  rating        Int
+  comment       String?
+  adminResponse String?
+  createdAt     DateTime       @default(now())
+
+  @@map("reviews")
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  message   String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@map("notifications")
+}
+
+// ─────────────────────────────────────────────
+// GALLERY — general hotel photography (not tied to a specific room type)
+// ─────────────────────────────────────────────
+
+enum GalleryCategory {
+  EXTERIOR
+  ROOM
+  SPA
+  GYM
+  POOL
+  CONFERENCE
+  DINING
+  GROUNDS
+}
+
+model GalleryImage {
+  id        String          @id @default(uuid())
+  url       String
+  caption   String?
+  category  GalleryCategory
+  createdAt DateTime        @default(now())
+
+  @@map("gallery_images")
+}
+

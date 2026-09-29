@@ -1,0 +1,14 @@
+@import "tailwindcss";
+
+/* Kwetu Hotel brand palette, taken from the logo */
+@theme {
+  --color-kwetu-green: #0f3d2e;      /* deep forest green — primary */
+  --color-kwetu-green-dark: #082922; /* darker shade, for hover/depth */
+  --color-kwetu-gold: #c9982e;       /* warm gold — accent */
+  --color-kwetu-gold-light: #e0b968;
+  --color-kwetu-cream: #fdfdfb;      /* off-white background */
+}
+
+body {
+  font-family: 'Georgia', 'Times New Roman', serif;
+}
